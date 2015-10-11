@@ -1,25 +1,18 @@
 
 -- Lua Element Tree --
 
-local ipairs, next, pairs = ipairs, next, pairs
-local assert, type, unpack, print = assert, type, unpack, print
-local getmetatable, setmetatable = getmetatable, setmetatable
 local base = {tostring = tostring}
-local io, string, table = io, string, table
+local lparse = require"lxp.lom"
 
-require "lxp.lom"
-local lxp = lxp
-local unpack = unpack
-
-module "etree"
+local _M = {}
 
 -- 'attr' is optional. Is my code ok with this ?
 
-fromstring = lxp.lom.parse
+_M.fromstring = lparse.parse
 
-function Type(cls)
+local function Type(cls)
   local constructor = function(cls, ...)
-    return cls:new(unpack(arg)) -- cls:new(...) in Lua 5.1
+    return cls:new(...) -- cls:new(...) in Lua 5.1
   end
   local mt = getmetatable(cls)
   if mt == nil then
@@ -29,9 +22,9 @@ function Type(cls)
   mt.__call = constructor
   return cls
 end
+_M.Type = Type
 
-
-StringBuffer = Type {
+_M.StringBuffer = Type {
 
   new = function(cls, elt)
     local buffer = {}
@@ -46,7 +39,7 @@ StringBuffer = Type {
 
 }
 
-function table.update(self, other)
+local function table_update(self, other)
   for key, value in pairs(other) do
     self[key] = value
   end
@@ -69,7 +62,7 @@ local function map(symbols)
   return array
 end
 
-encoding = {}
+local encoding = {}
 
 encoding[1] = { map{'&', '<'}      ,
                 map{'&', '<', '"'} }
@@ -88,7 +81,9 @@ encoding["standard"]  = encoding[2]
 encoding["strict"]    = encoding[3]
 encoding["most"]      = encoding[4]
 
-function lom_sort(attrs)
+_M.encoding = encoding
+
+local function lom_sort(attrs)
   -- collect the ordered attributes
   local indices = {}
   for key, _ in pairs(attrs) do
@@ -111,8 +106,9 @@ function lom_sort(attrs)
   end
   return attrs_
 end
+_M.lom_sort = lom_sort
 
-function lexicographic(attrs)
+local function lexicographic(attrs)
   local attrs_ = {}
   for attr, _ in attrs do
     if type(attr) == "string" then
@@ -121,9 +117,9 @@ function lexicographic(attrs)
   end
   return table.sort(attrs_)
 end
+_M.lexicographic = lexicographic
 
-
-ElementTree = Type {
+_M.ElementTree = Type {
 
   new = function(cls, elt, options)
     local etree = {}
@@ -133,8 +129,8 @@ ElementTree = Type {
     etree.root = assert(elt, "ElementTree:new: root element required")
     etree.options = {}
 
-    table.update(etree.options, cls.options)
-    table.update(etree.options, options or {})
+    table_update(etree.options, cls.options)
+    table_update(etree.options, options or {})
 
     return etree
   end,
@@ -167,19 +163,19 @@ ElementTree = Type {
     local attrs = self.options.attr_sort(elt_attr)
     for _, name in ipairs(attrs) do
       local value = elt_attr[name]
-      name  = ElementTree._encode(name, cdata_encoding)
-      value = ElementTree._encode(value, attributes_encoding)
+      name  = _M.ElementTree._encode(name, cdata_encoding)
+      value = _M.ElementTree._encode(value, attributes_encoding)
       local assignment = string.format('%s="%s"', name, value)
       file:write(" " .. assignment)
     end
 
-    if table.getn(elt) == 0 and self.options.empty == true then
+    if #(elt) == 0 and self.options.empty == true then
       file:write("/>")
     else
       file:write(">")
       for _, child in ipairs(elt) do
         if type(child)=="string" then
-          child = ElementTree._encode(child, cdata_encoding)
+          child = _M.ElementTree._encode(child, cdata_encoding)
           file:write(child)
         else
           assert(type(child)=="table")
@@ -200,8 +196,19 @@ ElementTree = Type {
   end,
 }
 
-function tostring(elt)
-  buffer = StringBuffer()
-  ElementTree(elt):write(buffer)
+local function tostring(elt)
+  buffer = _M.StringBuffer()
+  _M.ElementTree(elt):write(buffer)
   return base.tostring(buffer)
 end
+_M.tostring = tostring
+
+--[[ Compat with old module behaviour, if any ]]
+
+_M._PACKAGE="";
+_M._NAME="etree";
+_M._M=_M;
+
+--[[ End ]]
+
+return _M
